@@ -1,0 +1,81 @@
+{
+  "name": "@antonreshetov/bumpy",
+  "type": "module",
+  "version": "0.1.0",
+  "description": "Predictable, no-magic monorepo versioning and changelog tool",
+  "author": {
+    "name": "Anton Reshetov",
+    "url": "https://github.com/antonreshetov"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/antonreshetov/bumpy#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/antonreshetov/bumpy.git"
+  },
+  "bugs": {
+    "url": "https://github.com/antonreshetov/bumpy/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "versioning",
+    "monorepo",
+    "changelog",
+    "conventional-commits",
+    "release",
+    "semver"
+  ],
+  "bin": {
+    "bumpy": "./dist/cli.js"
+  },
+  "files": [
+    "README.md",
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "lint": "eslint .",
+    "lint:fix": "eslint --fix .",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.11.0",
+    "commander": "^14.0.2",
+    "conventional-commits-parser": "^6.2.1",
+    "execa": "^9.6.1",
+    "fast-glob": "^3.3.3",
+    "js-yaml": "^4.1.1",
+    "picocolors": "^1.1.1",
+    "semver": "^7.7.3",
+    "zod": "^4.3.5"
+  },
+  "devDependencies": {
+    "@antfu/eslint-config": "^7.2.0",
+    "@commitlint/cli": "^20.3.1",
+    "@commitlint/config-conventional": "^20.3.1",
+    "@types/conventional-commits-parser": "^5.0.2",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^25.0.10",
+    "@types/semver": "^7.7.1",
+    "eslint": "^9.39.2",
+    "lint-staged": "^16.2.7",
+    "prettier": "^3.8.1",
+    "simple-git-hooks": "^2.13.1",
+    "ts-node": "^10.9.2",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "npx lint-staged",
+    "commit-msg": "npx commitlint --edit $1"
+  },
+  "lint-staged": {
+    "*.{js,ts,vue}": [
+      "prettier --write",
+      "eslint --fix"
+    ]
+  }
+}

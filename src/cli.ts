@@ -1,0 +1,382 @@
+/* eslint-disable node/prefer-global/process */
+import type { Project } from './projects/index.js'
+import type { BumpType } from './versioning/index.js'
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import * as p from '@clack/prompts'
+import { Command } from 'commander'
+import color from 'picocolors'
+import {
+  updateChangelog,
+  updateWorkspaceChangelog,
+} from './changelog/index.js'
+import { initConfig, loadConfig } from './config/index.js'
+import {
+  commitFiles,
+  createTag,
+  getCommits,
+  getLastTag,
+  hasPendingCommits,
+  hasRemote,
+  isWorkingTreeClean,
+  push,
+} from './git/index.js'
+import { resolveProjects } from './projects/index.js'
+import { parseCommits } from './utils/commits.js'
+import { computeNextVersion, recommendBump } from './versioning/index.js'
+
+const program = new Command()
+
+program
+  .name('bumpy')
+  .description('Predictable mono-repo versioning tool')
+  .version('0.1.0')
+
+async function runRelease(projectName: string | undefined, options: any) {
+  try {
+    const config = await loadConfig()
+    const projects = await resolveProjects(config)
+
+    let project: Project | undefined
+
+    if (projectName) {
+      project = projects.find(p => p.name === projectName)
+      if (!project) {
+        p.cancel(`Project ${projectName} not found in configuration.`)
+        return
+      }
+    }
+    else {
+      const changes = await Promise.all(
+        projects.map(p => hasPendingCommits(p.name, p.directory)),
+      )
+      const candidates = projects.filter((_, i) => changes[i])
+
+      if (candidates.length === 0) {
+        p.note('No projects with pending changes found', color.blue('Info'))
+        return
+      }
+
+      const selectedProject = await p.select({
+        message: 'Select project to release',
+        options: candidates.map(p => ({
+          value: p,
+          label: `${p.name} (${p.version})`,
+        })),
+      })
+      if (p.isCancel(selectedProject))
+        return
+      project = selectedProject as Project
+    }
+
+    if (!options.dryRun && !options.yes && !(await isWorkingTreeClean())) {
+      const confirm = await p.confirm({
+        message: 'Working tree is dirty. Continue anyway?',
+        initialValue: false,
+      })
+      if (p.isCancel(confirm) || !confirm) {
+        p.cancel('Aborted')
+        return
+      }
+    }
+
+    const lastTag = await getLastTag(project.name)
+    const range = lastTag ? `${lastTag}..HEAD` : 'HEAD'
+    const rawCommits = await getCommits(range, project.directory)
+    const commits = parseCommits(rawCommits)
+
+    if (commits.length === 0) {
+      p.note('No commits found since last release', color.blue('Info'))
+      p.cancel('Release aborted.')
+      return
+    }
+
+    let bumpType = options.type
+    let customVersion = options.custom
+
+    if (!bumpType) {
+      const recommendation = recommendBump(commits)
+      const nextPatch = computeNextVersion(project.version, 'patch')
+      const nextMinor = computeNextVersion(project.version, 'minor')
+      const nextMajor = computeNextVersion(project.version, 'major')
+      const nextConv = recommendation
+        ? computeNextVersion(project.version, recommendation)
+        : null
+
+      const selectedBump = await p.select({
+        message: `Select bump type for ${project.name} (current ${project.version})`,
+        options: [
+          {
+            value: 'conventional',
+            label: `conventional ${nextConv ? `(${recommendation}: ${nextConv})` : '(none)'}`,
+          },
+          { value: 'major', label: `major ${nextMajor}` },
+          { value: 'minor', label: `minor ${nextMinor}` },
+          { value: 'patch', label: `patch ${nextPatch}` },
+          {
+            value: 'prepatch',
+            label: `pre-patch ${computeNextVersion(project.version, 'prepatch')}`,
+          },
+          {
+            value: 'preminor',
+            label: `pre-minor ${computeNextVersion(project.version, 'preminor')}`,
+          },
+          {
+            value: 'premajor',
+            label: `pre-major ${computeNextVersion(project.version, 'premajor')}`,
+          },
+          { value: 'as-is', label: `as-is ${project.version}` },
+          { value: 'custom', label: 'custom ...' },
+        ],
+      })
+      if (p.isCancel(selectedBump))
+        return
+      bumpType = selectedBump as string
+    }
+
+    if (bumpType === 'custom' && !customVersion) {
+      const result = await p.text({
+        message: 'Enter custom version',
+        placeholder: '1.2.3',
+        validate: val => (val ? undefined : 'Version is required'),
+      })
+      if (p.isCancel(result))
+        return
+      customVersion = result as string
+    }
+
+    const nextVersion = computeNextVersion(
+      project.version,
+      bumpType as BumpType,
+      commits,
+      customVersion,
+    )
+
+    const gitActions = [
+      `Commit: ${config.release.git.commit ? color.green('Yes') : color.red('No')}`,
+      `Tag: ${config.release.git.tag ? color.green('Yes') : color.red('No')}`,
+      `Push: ${config.release.git.push ? color.green('Yes') : color.red('No')}`,
+    ].join(' | ')
+
+    p.note(
+      `Project: ${project.name}\n`
+      + `Version: ${project.version} -> ${color.green(nextVersion)}\n`
+      + `New Commits: ${commits.length}\n\n`
+      + `${gitActions}`,
+      options.dryRun
+        ? color.yellow('Release (Dry Run)')
+        : color.yellow('Release'),
+    )
+
+    if (!options.yes) {
+      const confirmRelease = await p.confirm({
+        message: 'Proceed with release?',
+        initialValue: true,
+      })
+      if (p.isCancel(confirmRelease) || !confirmRelease)
+        return
+    }
+
+    const changedFiles: string[] = []
+    const cwd = process.cwd()
+
+    if (!options.dryRun) {
+      const s = p.spinner()
+      s.start('Releasing...')
+
+      // 1. Update package.json
+      const pkg = JSON.parse(
+        await fs.readFile(project.packageJsonPath, 'utf-8'),
+      )
+      pkg.version = nextVersion
+      await fs.writeFile(
+        project.packageJsonPath,
+        `${JSON.stringify(pkg, null, 2)}\n`,
+      )
+      s.message(
+        `Updated ${color.cyan(path.relative(cwd, project.packageJsonPath))}`,
+      )
+      changedFiles.push(project.packageJsonPath)
+
+      // 2. Update Project Changelog
+      if (config.release.changelog.projectChangelogs) {
+        const result = await updateChangelog(
+          project.directory,
+          nextVersion,
+          commits,
+          false,
+        )
+        s.message(`Updated ${color.cyan(path.relative(cwd, result.path))}`)
+        changedFiles.push(result.path)
+      }
+
+      // 3. Update Workspace Changelog
+      if (config.release.changelog.workspaceChangelog) {
+        const result = await updateWorkspaceChangelog(
+          process.cwd(),
+          project.name,
+          nextVersion,
+          commits,
+          false,
+        )
+        s.message(`Updated ${color.cyan(path.relative(cwd, result.path))}`)
+        changedFiles.push(result.path)
+      }
+
+      s.stop('Files updated')
+    }
+    else {
+      // Dry Run Logic
+      p.log.info(
+        `Would update ${color.cyan(path.relative(cwd, project.packageJsonPath))} to version ${color.green(nextVersion)}`,
+      )
+      changedFiles.push(project.packageJsonPath)
+
+      if (config.release.changelog.projectChangelogs) {
+        const result = await updateChangelog(
+          project.directory,
+          nextVersion,
+          commits,
+          true,
+        )
+        p.log.info(
+          `Would update ${color.cyan(path.relative(cwd, result.path))}`,
+        )
+        p.note(result.content, 'New Changelog Content')
+        changedFiles.push(result.path)
+      }
+
+      if (config.release.changelog.workspaceChangelog) {
+        const result = await updateWorkspaceChangelog(
+          process.cwd(),
+          project.name,
+          nextVersion,
+          commits,
+          true,
+        )
+        p.log.info(
+          `Would update ${color.cyan(path.relative(cwd, result.path))}`,
+        )
+        if (!config.release.changelog.projectChangelogs) {
+          p.note(result.content, 'New Workspace Changelog Content')
+        }
+        changedFiles.push(result.path)
+      }
+    }
+
+    // 4. Git operations
+    const uniqueFiles = Array.from(new Set(changedFiles))
+    const tagName = `${project.name}@${nextVersion}`
+    const commitMsg = `chore(release): ${tagName}`
+
+    if (config.release.git.commit) {
+      const relFiles = uniqueFiles
+        .map(f => color.cyan(path.relative(cwd, f)))
+        .join(', ')
+      p.log.step(
+        `${options.dryRun ? 'Would commit' : 'Committing'}: ${relFiles}`,
+      )
+      p.log.step(`Message: ${commitMsg}`)
+      await commitFiles(uniqueFiles, commitMsg, options.dryRun)
+    }
+
+    if (config.release.git.tag) {
+      p.log.step(
+        `${options.dryRun ? 'Would tag' : 'Tagging'}: ${color.green(tagName)}`,
+      )
+      await createTag(tagName, commitMsg, options.dryRun)
+    }
+
+    if (config.release.git.push) {
+      const remoteExists = await hasRemote()
+      if (remoteExists) {
+        if (!options.dryRun) {
+          const sPush = p.spinner()
+          sPush.start('Pushing...')
+          await push(options.dryRun)
+          sPush.stop('Pushed')
+        }
+        else {
+          p.log.step(`Would push commits and tags`)
+        }
+      }
+      else {
+        p.log.warn(color.yellow('No git remote found. Push skipped.'))
+      }
+    }
+
+    p.outro(
+      options.dryRun
+        ? `Dry run finished for ${color.green(tagName)}`
+        : `Successfully released ${color.green(tagName)}`,
+    )
+  }
+  catch (e: any) {
+    p.cancel(`Error: ${e.message}`)
+  }
+}
+
+program
+  .command('init')
+  .description('Initialize bumpy.json')
+  .action(async () => {
+    try {
+      await initConfig()
+      p.note('bumpy.json created')
+    }
+    catch (e: any) {
+      p.cancel(`Error: ${e.message}`)
+    }
+  })
+
+program
+  .command('status')
+  .description('Show projects and their current versions')
+  .action(async () => {
+    try {
+      const config = await loadConfig()
+      const projects = await resolveProjects(config)
+
+      const statusData = await Promise.all(
+        projects.map(async (p) => {
+          const lastTag = await getLastTag(p.name)
+          const pending = await hasPendingCommits(p.name, p.directory)
+          return {
+            'Project': p.name,
+            'Version': p.version,
+            'Last Tag': lastTag || 'none',
+            'Pending Changes': pending ? 'Yes' : 'No',
+          }
+        }),
+      )
+
+      console.log('')
+      console.table(statusData)
+      console.log('')
+    }
+    catch (e: any) {
+      p.cancel(`Error: ${e.message}`)
+    }
+  })
+
+program
+  .command('release')
+  .description('Release a project')
+  .argument('[project]', 'Project name')
+  .option(
+    '--type <type>',
+    'Bump type (patch, minor, major, conventional, as-is, custom, etc.)',
+  )
+  .option('--custom <version>', 'Custom version if type is custom')
+  .option('--dry-run', 'Don\'t perform any changes', false)
+  .option('--yes', 'Skip confirmation prompts', false)
+  .action(runRelease)
+
+// Handle default/interactive mode
+if (process.argv.length === 2) {
+  // If no args (just 'bumpy'), run interactive release
+  runRelease(undefined, { dryRun: false, yes: false })
+}
+else {
+  program.parse()
+}
