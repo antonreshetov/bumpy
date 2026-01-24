@@ -4,12 +4,60 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import fg from 'fast-glob'
 import yaml from 'js-yaml'
+import { getRemoteUrl } from '../git/index.js'
 
 export interface Project {
   name: string
   directory: string
   version: string
   packageJsonPath: string
+  repoUrl?: string
+}
+
+function getRepoUrl(pkg: any): string | undefined {
+  let url = ''
+
+  if (typeof pkg === 'string') {
+    url = pkg
+  }
+  else {
+    const repo = pkg.repository
+    if (!repo)
+      return undefined
+
+    if (typeof repo === 'string') {
+      url = repo
+    }
+    else if (typeof repo === 'object' && repo.url) {
+      url = repo.url
+    }
+  }
+
+  if (!url)
+    return undefined
+
+  // Clean up URL
+  if (url.startsWith('git+'))
+    url = url.slice(4)
+  if (url.endsWith('.git'))
+    url = url.slice(0, -4)
+  if (url.startsWith('git://'))
+    url = `https://${url.slice(6)}`
+
+  // Handle SSH urls (git@github.com:user/repo)
+  if (url.startsWith('git@')) {
+    const match = url.match(/^git@([^:]+):(.*)$/)
+    if (match) {
+      return `https://${match[1]}/${match[2]}`
+    }
+  }
+
+  // Handle github shorthand "user/repo"
+  if (!url.includes('://') && url.split('/').length === 2) {
+    return `https://github.com/${url}`
+  }
+
+  return url
 }
 
 async function getWorkspacePatterns(
@@ -89,6 +137,26 @@ export async function resolveProjects(
     absolute: false,
   })
 
+  // Try to find root package.json for fallback repository
+  let rootRepoUrl: string | undefined
+  try {
+    const rootPkgContent = await fs.readFile(
+      path.join(cwd, 'package.json'),
+      'utf-8',
+    )
+    const rootPkg = JSON.parse(rootPkgContent)
+    rootRepoUrl = getRepoUrl(rootPkg)
+  }
+  catch {}
+
+  // If still no repo url, try to get from git remote
+  if (!rootRepoUrl) {
+    const gitRemote = await getRemoteUrl()
+    if (gitRemote) {
+      rootRepoUrl = getRepoUrl(gitRemote)
+    }
+  }
+
   const projects: Project[] = []
 
   for (const entry of entries) {
@@ -103,11 +171,14 @@ export async function resolveProjects(
       if (!pkg.name)
         continue
 
+      const repoUrl = getRepoUrl(pkg) || rootRepoUrl
+
       projects.push({
         name: pkg.name,
         directory: relativeDir,
         version: pkg.version || '0.0.0',
         packageJsonPath: pkgPath,
+        repoUrl,
       })
     }
     catch {

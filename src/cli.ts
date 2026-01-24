@@ -209,6 +209,7 @@ async function runRelease(projectName: string | undefined, options: any) {
           nextVersion,
           commits,
           false,
+          { repoUrl: project.repoUrl },
         )
         s.message(`Updated ${color.cyan(path.relative(cwd, result.path))}`)
         changedFiles.push(result.path)
@@ -222,6 +223,7 @@ async function runRelease(projectName: string | undefined, options: any) {
           nextVersion,
           commits,
           false,
+          project.repoUrl,
         )
         s.message(`Updated ${color.cyan(path.relative(cwd, result.path))}`)
         changedFiles.push(result.path)
@@ -242,6 +244,7 @@ async function runRelease(projectName: string | undefined, options: any) {
           nextVersion,
           commits,
           true,
+          { repoUrl: project.repoUrl },
         )
         p.log.info(
           `Would update ${color.cyan(path.relative(cwd, result.path))}`,
@@ -257,6 +260,7 @@ async function runRelease(projectName: string | undefined, options: any) {
           nextVersion,
           commits,
           true,
+          project.repoUrl,
         )
         p.log.info(
           `Would update ${color.cyan(path.relative(cwd, result.path))}`,

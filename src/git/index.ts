@@ -62,6 +62,29 @@ export async function hasRemote(): Promise<boolean> {
   }
 }
 
+export async function getRemoteUrl(): Promise<string | null> {
+  try {
+    const { stdout } = await execa('git', ['remote', 'get-url', 'origin'])
+    return stdout.trim()
+  }
+  catch {
+    try {
+      const { stdout: remotes } = await execa('git', ['remote'])
+      const firstRemote = remotes.split('\n')[0]?.trim()
+      if (firstRemote) {
+        const { stdout: url } = await execa('git', [
+          'remote',
+          'get-url',
+          firstRemote,
+        ])
+        return url.trim()
+      }
+    }
+    catch {}
+    return null
+  }
+}
+
 export async function createTag(
   tagName: string,
   message: string,

@@ -2,13 +2,19 @@ import type { ParsedCommit } from '../utils/commits.js'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
+export interface UpdateChangelogOptions {
+  projectName?: string
+  repoUrl?: string
+}
+
 export async function updateChangelog(
   projectDir: string,
   newVersion: string,
   commits: ParsedCommit[],
   dryRun: boolean,
-  projectName?: string,
+  options: UpdateChangelogOptions = {},
 ): Promise<{ path: string, content: string }> {
+  const { projectName, repoUrl } = options
   const changelogPath = path.join(projectDir, 'CHANGELOG.md')
   const date = new Date().toISOString().split('T')[0]
 
@@ -23,7 +29,14 @@ export async function updateChangelog(
     const scope = commit.scope ? `**${commit.scope}:** ` : ''
     const subject
       = commit.subject || commit.header || commit.raw.split('\n')[0]
-    const message = `${scope}${subject} (${commit.hash?.substring(0, 7) || 'n/a'})`
+
+    const hash = commit.hash?.substring(0, 7) || 'n/a'
+    const hashLink
+      = repoUrl && commit.hash
+        ? `[${hash}](${repoUrl}/commit/${commit.hash})`
+        : hash
+
+    const message = `${scope}${subject} (${hashLink})`
 
     if (
       commit.notes.some(n => n.title === 'BREAKING CHANGE')
@@ -87,6 +100,10 @@ export async function updateWorkspaceChangelog(
   newVersion: string,
   commits: ParsedCommit[],
   dryRun: boolean,
+  repoUrl?: string,
 ): Promise<{ path: string, content: string }> {
-  return updateChangelog(cwd, newVersion, commits, dryRun, projectName)
+  return updateChangelog(cwd, newVersion, commits, dryRun, {
+    projectName,
+    repoUrl,
+  })
 }
