@@ -20,6 +20,7 @@ export const BumpyConfigSchema = z
             commit: z.boolean().default(true),
             tag: z.boolean().default(true),
             push: z.boolean().default(true),
+            commitMessage: z.string().optional(),
           })
           .default({
             commit: true,

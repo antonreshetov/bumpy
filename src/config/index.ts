@@ -15,6 +15,7 @@ export const DEFAULT_CONFIG: BumpyConfig = {
       commit: true,
       tag: true,
       push: true,
+      commitMessage: 'chore(release): {tag}',
     },
   },
 }

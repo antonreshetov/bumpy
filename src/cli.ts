@@ -29,7 +29,7 @@ const program = new Command()
 
 program
   .name('bumpy')
-  .description('Predictable mono-repo versioning tool')
+  .description('Zero-config, Git-powered versioning for monorepos')
   .version('0.1.0')
 
 async function runRelease(projectName: string | undefined, options: any) {
@@ -267,7 +267,17 @@ async function runRelease(projectName: string | undefined, options: any) {
     // 4. Git operations
     const uniqueFiles = Array.from(new Set(changedFiles))
     const tagName = `${project.name}@${nextVersion}`
-    const commitMsg = `chore(release): ${tagName}`
+    let commitMsg = `chore(release): ${tagName}`
+
+    const rawCommitMsg
+      = options.commitMessage || config.release.git.commitMessage
+
+    if (rawCommitMsg) {
+      commitMsg = rawCommitMsg
+        .replace('{version}', nextVersion)
+        .replace('{name}', project.name)
+        .replace('{tag}', tagName)
+    }
 
     if (config.release.git.commit) {
       const relFiles = uniqueFiles
@@ -368,6 +378,7 @@ program
     'Bump type (patch, minor, major, conventional, as-is, custom, etc.)',
   )
   .option('--custom <version>', 'Custom version if type is custom')
+  .option('--commit-message <message>', 'Commit message template')
   .option('--dry-run', 'Don\'t perform any changes', false)
   .option('--yes', 'Skip confirmation prompts', false)
   .action(runRelease)

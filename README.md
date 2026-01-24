@@ -1,13 +1,12 @@
 # Bumpy
 
-Predictable, "no-magic" monorepo versioning tool.
+Zero-config, Git-powered versioning for monorepos.
 
 `bumpy` is a CLI tool designed for developers who want streamlined versioning and changelog management without the overhead of complex configurations or the "ceremony" of hidden state files.
 
 ## Features
 
 - **Zero Config:** Automatically detects projects using `package.json` workspaces, `pnpm-workspace.yaml`, or standard `apps/*` and `packages/*` structures.
-- **Project Auto-Discovery:** Automatically finds projects in your workspace directories.
 - **Granular Changelogs:** Generates `CHANGELOG.md` for each project based on its own Git history.
 - **Conventional Intelligence:** Recommends the next version based on Conventional Commits.
 - **Tag-based Boundaries:** Uses tags like `projectName@version` to determine the history range.
@@ -77,11 +76,19 @@ If you need to customize this (e.g., explicitly define projects, ignore some, or
     "git": {
       "commit": true,
       "tag": true,
-      "push": true
+      "push": true,
+      "commitMessage": "chore(release): {tag}"
     }
   }
 }
 ```
+
+### Commit Message Placeholders
+
+When customizing `commitMessage`, you can use the following placeholders:
+- `{name}`: The name of the project.
+- `{version}`: The new version being released.
+- `{tag}`: The full tag name (e.g., `project-a@1.2.3`).
 
 ## Usage
 
