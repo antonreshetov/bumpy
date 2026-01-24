@@ -1,7 +1,7 @@
 {
   "name": "@antonreshetov/bumpy",
   "type": "module",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Predictable, no-magic monorepo versioning and changelog tool",
   "author": {
     "name": "Anton Reshetov",
