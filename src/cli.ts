@@ -25,12 +25,16 @@ import { resolveProjects } from './projects/index.js'
 import { parseCommits } from './utils/commits.js'
 import { computeNextVersion, recommendBump } from './versioning/index.js'
 
+const pkg = JSON.parse(
+  await fs.readFile(new URL('../package.json', import.meta.url), 'utf-8'),
+)
+
 const program = new Command()
 
 program
   .name('bumpy')
   .description('Zero-config, Git-powered versioning for monorepos')
-  .version('0.1.0')
+  .version(pkg.version)
 
 async function runRelease(projectName: string | undefined, options: any) {
   try {
