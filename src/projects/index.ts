@@ -1,10 +1,10 @@
 /* eslint-disable node/prefer-global/process */
-import type { BumpyConfig } from '../config/schema.js'
+import type { BumpyConfig } from '@/config/schema'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import fg from 'fast-glob'
 import yaml from 'js-yaml'
-import { getRemoteUrl } from '../git/index.js'
+import { getRemoteUrl } from '@/git'
 
 export interface Project {
   name: string

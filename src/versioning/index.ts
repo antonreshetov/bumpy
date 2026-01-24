@@ -1,5 +1,5 @@
 import type { ReleaseType } from 'semver'
-import type { ParsedCommit } from '../utils/commits.js'
+import type { ParsedCommit } from '@/utils/commits'
 import semver from 'semver'
 
 export type BumpType = ReleaseType | 'conventional' | 'as-is' | 'custom'

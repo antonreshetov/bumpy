@@ -1,8 +1,8 @@
 /* eslint-disable node/prefer-global/process */
-import type { BumpyConfig } from './schema.js'
+import type { BumpyConfig } from '@/config/schema'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { BumpyConfigSchema } from './schema.js'
+import { BumpyConfigSchema } from '@/config/schema'
 
 export const DEFAULT_CONFIG: BumpyConfig = {
   release: {

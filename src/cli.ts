@@ -1,16 +1,13 @@
 /* eslint-disable node/prefer-global/process */
-import type { Project } from './projects/index.js'
-import type { BumpType } from './versioning/index.js'
+import type { Project } from '@/projects'
+import type { BumpType } from '@/versioning'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import * as p from '@clack/prompts'
 import { Command } from 'commander'
 import color from 'picocolors'
-import {
-  updateChangelog,
-  updateWorkspaceChangelog,
-} from './changelog/index.js'
-import { initConfig, loadConfig } from './config/index.js'
+import { updateChangelog, updateWorkspaceChangelog } from '@/changelog'
+import { initConfig, loadConfig } from '@/config'
 import {
   commitFiles,
   createTag,
@@ -20,10 +17,10 @@ import {
   hasRemote,
   isWorkingTreeClean,
   push,
-} from './git/index.js'
-import { resolveProjects } from './projects/index.js'
-import { parseCommits } from './utils/commits.js'
-import { computeNextVersion, recommendBump } from './versioning/index.js'
+} from '@/git'
+import { resolveProjects } from '@/projects'
+import { parseCommits } from '@/utils/commits'
+import { computeNextVersion, recommendBump } from '@/versioning'
 
 const pkg = JSON.parse(
   await fs.readFile(new URL('../package.json', import.meta.url), 'utf-8'),

@@ -1,4 +1,4 @@
-import type { ParsedCommit } from '../utils/commits.js'
+import type { ParsedCommit } from '@/utils/commits'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 
