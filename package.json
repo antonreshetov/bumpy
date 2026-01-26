@@ -2,7 +2,7 @@
   "name": "@antonreshetov/bumpy",
   "type": "module",
   "version": "0.3.0",
-  "description": "Predictable, no-magic monorepo versioning and changelog tool",
+  "description": "Zero-config, Git-powered versioning for monorepos",
   "author": {
     "name": "Anton Reshetov",
     "url": "https://github.com/antonreshetov"
