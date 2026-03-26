@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 (2026-03-26)
+
+### Features
+
+- add --force flag to allow release without pending commits ([64397e6](https://github.com/antonreshetov/bumpy/commit/64397e6922e6d328fc616809d1557dd2ace30952))
+
+### Other
+
+- update package description ([1f621c8](https://github.com/antonreshetov/bumpy/commit/1f621c8fe577d02cc383c4506806c9d47cf3c9bb))
+
 ## 0.3.0 (2026-01-24)
 
 ### Features
