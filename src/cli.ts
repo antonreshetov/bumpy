@@ -38,6 +38,10 @@ async function runRelease(projectName: string | undefined, options: any) {
     const config = await loadConfig()
     const projects = await resolveProjects(config)
 
+    if (options.force) {
+      p.note('Commit check skipped', color.yellow('Force mode'))
+    }
+
     let project: Project | undefined
 
     if (projectName) {
@@ -48,10 +52,17 @@ async function runRelease(projectName: string | undefined, options: any) {
       }
     }
     else {
-      const changes = await Promise.all(
-        projects.map(p => hasPendingCommits(p.name, p.directory)),
-      )
-      const candidates = projects.filter((_, i) => changes[i])
+      let candidates: Project[]
+
+      if (options.force) {
+        candidates = projects
+      }
+      else {
+        const changes = await Promise.all(
+          projects.map(p => hasPendingCommits(p.name, p.directory)),
+        )
+        candidates = projects.filter((_, i) => changes[i])
+      }
 
       if (candidates.length === 0) {
         p.note('No projects with pending changes found', color.blue('Info'))
@@ -86,7 +97,7 @@ async function runRelease(projectName: string | undefined, options: any) {
     const rawCommits = await getCommits(range, project.directory)
     const commits = parseCommits(rawCommits)
 
-    if (commits.length === 0) {
+    if (commits.length === 0 && !options.force) {
       p.note('No commits found since last release', color.blue('Info'))
       p.cancel('Release aborted.')
       return
@@ -96,7 +107,7 @@ async function runRelease(projectName: string | undefined, options: any) {
     let customVersion = options.custom
 
     if (!bumpType) {
-      const recommendation = recommendBump(commits)
+      const recommendation = commits.length > 0 ? recommendBump(commits) : null
       const nextPatch = computeNextVersion(project.version, 'patch')
       const nextMinor = computeNextVersion(project.version, 'minor')
       const nextMajor = computeNextVersion(project.version, 'major')
@@ -104,31 +115,37 @@ async function runRelease(projectName: string | undefined, options: any) {
         ? computeNextVersion(project.version, recommendation)
         : null
 
+      const bumpOptions = [
+        ...(commits.length > 0
+          ? [
+              {
+                value: 'conventional',
+                label: `conventional ${nextConv ? `(${recommendation}: ${nextConv})` : '(none)'}`,
+              },
+            ]
+          : []),
+        { value: 'major', label: `major ${nextMajor}` },
+        { value: 'minor', label: `minor ${nextMinor}` },
+        { value: 'patch', label: `patch ${nextPatch}` },
+        {
+          value: 'prepatch',
+          label: `pre-patch ${computeNextVersion(project.version, 'prepatch')}`,
+        },
+        {
+          value: 'preminor',
+          label: `pre-minor ${computeNextVersion(project.version, 'preminor')}`,
+        },
+        {
+          value: 'premajor',
+          label: `pre-major ${computeNextVersion(project.version, 'premajor')}`,
+        },
+        { value: 'as-is', label: `as-is ${project.version}` },
+        { value: 'custom', label: 'custom ...' },
+      ]
+
       const selectedBump = await p.select({
         message: `Select bump type for ${project.name} (current ${project.version})`,
-        options: [
-          {
-            value: 'conventional',
-            label: `conventional ${nextConv ? `(${recommendation}: ${nextConv})` : '(none)'}`,
-          },
-          { value: 'major', label: `major ${nextMajor}` },
-          { value: 'minor', label: `minor ${nextMinor}` },
-          { value: 'patch', label: `patch ${nextPatch}` },
-          {
-            value: 'prepatch',
-            label: `pre-patch ${computeNextVersion(project.version, 'prepatch')}`,
-          },
-          {
-            value: 'preminor',
-            label: `pre-minor ${computeNextVersion(project.version, 'preminor')}`,
-          },
-          {
-            value: 'premajor',
-            label: `pre-major ${computeNextVersion(project.version, 'premajor')}`,
-          },
-          { value: 'as-is', label: `as-is ${project.version}` },
-          { value: 'custom', label: 'custom ...' },
-        ],
+        options: bumpOptions,
       })
       if (p.isCancel(selectedBump))
         return
@@ -386,6 +403,7 @@ program
   .option('--commit-message <message>', 'Commit message template')
   .option('--dry-run', 'Don\'t perform any changes', false)
   .option('--yes', 'Skip confirmation prompts', false)
+  .option('--force', 'Allow release without pending commits', false)
   .action(runRelease)
 
 // Handle default/interactive mode
