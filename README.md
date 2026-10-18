@@ -185,6 +185,5 @@ bumpy release --dry-run
 - `--force`: Allow a release even when there are no pending commits.
 - `--yes`: Skip all confirmation prompts.
 - `--dry-run`: Show what would happen without making any changes.
-- `--force`: Allow release without pending commits.
 
 Copyright (c) 2026-present, [Anton Reshetov](https://github.com/antonreshetov).
