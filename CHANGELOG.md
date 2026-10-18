@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.5.0 (2026-10-18)
+
+### Features
+
+- **tags:** make git tag format configurable (#2) ([030931a](https://github.com/antonreshetov/bumpy/commit/030931ac91e33c68bb725f0a8512a49723678b40))
+- **projects:** include internal workspace deps in project history (#1) ([d93d323](https://github.com/antonreshetov/bumpy/commit/d93d3239635e7164ae2a8bca29585a68c9861955))
+
 ## 0.4.0 (2026-03-26)
 
 ### Features
