@@ -7,6 +7,7 @@ import { BumpyConfigSchema } from '@/config/schema'
 export const DEFAULT_CONFIG: BumpyConfig = {
   release: {
     ignore: [],
+    includeWorkspaceDeps: true,
     changelog: {
       projectChangelogs: true,
       workspaceChangelog: false,

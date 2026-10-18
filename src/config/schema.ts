@@ -6,6 +6,7 @@ export const BumpyConfigSchema = z
     release: z
       .object({
         ignore: z.array(z.string()).default([]),
+        includeWorkspaceDeps: z.boolean().default(true),
         changelog: z
           .object({
             projectChangelogs: z.boolean().default(true),
@@ -30,6 +31,7 @@ export const BumpyConfigSchema = z
       })
       .default({
         ignore: [],
+        includeWorkspaceDeps: true,
         changelog: {
           projectChangelogs: true,
           workspaceChangelog: false,

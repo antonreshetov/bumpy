@@ -39,6 +39,7 @@
     "dev": "tsup --watch",
     "lint": "eslint .",
     "lint:fix": "eslint --fix .",
+    "test": "vitest run",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
@@ -66,7 +67,8 @@
     "simple-git-hooks": "^2.13.1",
     "ts-node": "^10.9.2",
     "tsup": "^8.5.1",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
   },
   "simple-git-hooks": {
     "pre-commit": "npx lint-staged",

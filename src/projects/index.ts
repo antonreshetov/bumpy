@@ -6,13 +6,34 @@ import fg from 'fast-glob'
 import yaml from 'js-yaml'
 import { getRemoteUrl } from '@/git'
 
+export interface WorkspacePackage {
+  name: string
+  directory: string
+}
+
 export interface Project {
   name: string
   directory: string
   version: string
   packageJsonPath: string
   repoUrl?: string
+  /** Internal (not released) workspace packages this project depends on, transitively. */
+  workspaceDeps: WorkspacePackage[]
 }
+
+const DEPENDENCY_FIELDS = [
+  'dependencies',
+  'devDependencies',
+  'peerDependencies',
+  'optionalDependencies',
+] as const
+
+const DEFAULT_IGNORE = [
+  '**/node_modules/**',
+  '**/dist/**',
+  '**/test/**',
+  '**/tests/**',
+]
 
 function getRepoUrl(pkg: any): string | undefined {
   let url = ''
@@ -60,16 +81,8 @@ function getRepoUrl(pkg: any): string | undefined {
   return url
 }
 
-async function getWorkspacePatterns(
-  cwd: string,
-  config: BumpyConfig,
-): Promise<string[]> {
-  // 1. Config override
-  if (config.projects && config.projects.length > 0) {
-    return config.projects
-  }
-
-  // 2. package.json workspaces
+async function getPackageManagerPatterns(cwd: string): Promise<string[]> {
+  // 1. package.json workspaces
   try {
     const pkgContent = await fs.readFile(
       path.join(cwd, 'package.json'),
@@ -85,7 +98,7 @@ async function getWorkspacePatterns(
   }
   catch {}
 
-  // 3. pnpm-workspace.yaml
+  // 2. pnpm-workspace.yaml
   try {
     const pnpmContent = await fs.readFile(
       path.join(cwd, 'pnpm-workspace.yaml'),
@@ -98,7 +111,7 @@ async function getWorkspacePatterns(
   }
   catch {}
 
-  // 4. Default
+  // 3. Default
   for (const dir of ['apps', 'packages']) {
     try {
       const stat = await fs.stat(path.join(cwd, dir))
@@ -111,31 +124,118 @@ async function getWorkspacePatterns(
   return ['.']
 }
 
-export async function resolveProjects(
-  config: BumpyConfig,
-  cwd: string = process.cwd(),
-): Promise<Project[]> {
-  const patterns = await getWorkspacePatterns(cwd, config)
-
-  // Transform patterns to find package.json files
+async function findManifests(
+  cwd: string,
+  patterns: string[],
+  ignore: string[],
+): Promise<string[]> {
   const manifestPatterns = patterns.map((p) => {
     if (p.endsWith('/package.json'))
       return p
     return `${p.replace(/\/+$/, '')}/package.json`
   })
 
-  const ignore = [
-    '**/node_modules/**',
-    '**/dist/**',
-    '**/test/**',
-    '**/tests/**',
-  ]
-
-  const entries = await fg(manifestPatterns, {
+  return fg(manifestPatterns, {
     cwd,
-    ignore: [...ignore, ...config.release.ignore],
+    ignore: [...DEFAULT_IGNORE, ...ignore],
     absolute: false,
   })
+}
+
+async function readManifest(pkgPath: string): Promise<any | null> {
+  try {
+    return JSON.parse(await fs.readFile(pkgPath, 'utf-8'))
+  }
+  catch {
+    return null
+  }
+}
+
+function getDependencyNames(pkg: any): string[] {
+  const names = new Set<string>()
+  for (const field of DEPENDENCY_FIELDS) {
+    const deps = pkg[field]
+    if (deps && typeof deps === 'object') {
+      for (const name of Object.keys(deps)) names.add(name)
+    }
+  }
+  return [...names]
+}
+
+interface ManifestInfo {
+  directory: string
+  dependencies: string[]
+}
+
+/**
+ * Collects workspace packages that are excluded from releases (via
+ * `release.ignore` or `projects`). Their code ships inside the projects that
+ * depend on them, so their commits belong to those projects' history.
+ * Released packages have their own versions and changelogs and are not followed.
+ */
+async function resolveInternalPackages(
+  cwd: string,
+  patterns: string[],
+  releasedNames: Set<string>,
+): Promise<Map<string, ManifestInfo>> {
+  const entries = await findManifests(cwd, patterns, [])
+  const internal = new Map<string, ManifestInfo>()
+
+  for (const entry of entries) {
+    const directory = path.dirname(entry)
+    // The workspace root would match every commit in the repo
+    if (directory === '.')
+      continue
+
+    const pkg = await readManifest(path.join(cwd, entry))
+    if (!pkg?.name || releasedNames.has(pkg.name))
+      continue
+
+    internal.set(pkg.name, {
+      directory,
+      dependencies: getDependencyNames(pkg),
+    })
+  }
+
+  return internal
+}
+
+function collectWorkspaceDeps(
+  pkg: any,
+  internal: Map<string, ManifestInfo>,
+): WorkspacePackage[] {
+  const result: WorkspacePackage[] = []
+  const visited = new Set<string>([pkg.name])
+  const queue = getDependencyNames(pkg)
+
+  while (queue.length > 0) {
+    const name = queue.shift()!
+    if (visited.has(name))
+      continue
+    visited.add(name)
+
+    const info = internal.get(name)
+    if (!info)
+      continue
+
+    result.push({ name, directory: info.directory })
+    queue.push(...info.dependencies)
+  }
+
+  return result
+}
+
+export async function resolveProjects(
+  config: BumpyConfig,
+  cwd: string = process.cwd(),
+): Promise<Project[]> {
+  const packageManagerPatterns = await getPackageManagerPatterns(cwd)
+  const patterns
+    = config.projects && config.projects.length > 0
+      ? config.projects
+      : packageManagerPatterns
+
+  const entries = await findManifests(cwd, patterns, config.release.ignore)
 
   // Try to find root package.json for fallback repository
   let rootRepoUrl: string | undefined
@@ -157,34 +257,32 @@ export async function resolveProjects(
     }
   }
 
-  const projects: Project[] = []
-
+  const manifests: Array<{ pkgPath: string, pkg: any }> = []
   for (const entry of entries) {
     const pkgPath = path.join(cwd, entry)
-    const projectDir = path.dirname(pkgPath)
-    const relativeDir = path.relative(cwd, projectDir) || '.'
-
-    try {
-      const pkgContent = await fs.readFile(pkgPath, 'utf-8')
-      const pkg = JSON.parse(pkgContent)
-
-      if (!pkg.name)
-        continue
-
-      const repoUrl = getRepoUrl(pkg) || rootRepoUrl
-
-      projects.push({
-        name: pkg.name,
-        directory: relativeDir,
-        version: pkg.version || '0.0.0',
-        packageJsonPath: pkgPath,
-        repoUrl,
-      })
-    }
-    catch {
-      // invalid package.json, skip
-    }
+    const pkg = await readManifest(pkgPath)
+    if (pkg?.name)
+      manifests.push({ pkgPath, pkg })
   }
 
-  return projects
+  const internal = config.release.includeWorkspaceDeps
+    ? await resolveInternalPackages(
+        cwd,
+        [...new Set([...packageManagerPatterns, ...patterns])],
+        new Set(manifests.map(m => m.pkg.name)),
+      )
+    : new Map<string, ManifestInfo>()
+
+  return manifests.map(({ pkgPath, pkg }) => ({
+    name: pkg.name,
+    directory: path.relative(cwd, path.dirname(pkgPath)) || '.',
+    version: pkg.version || '0.0.0',
+    packageJsonPath: pkgPath,
+    repoUrl: getRepoUrl(pkg) || rootRepoUrl,
+    workspaceDeps: collectWorkspaceDeps(pkg, internal),
+  }))
+}
+
+export function getProjectPaths(project: Project): string[] {
+  return [project.directory, ...project.workspaceDeps.map(d => d.directory)]
 }

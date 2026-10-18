@@ -18,7 +18,7 @@ import {
   isWorkingTreeClean,
   push,
 } from '@/git'
-import { resolveProjects } from '@/projects'
+import { getProjectPaths, resolveProjects } from '@/projects'
 import { parseCommits } from '@/utils/commits'
 import { computeNextVersion, recommendBump } from '@/versioning'
 
@@ -59,7 +59,7 @@ async function runRelease(projectName: string | undefined, options: any) {
       }
       else {
         const changes = await Promise.all(
-          projects.map(p => hasPendingCommits(p.name, p.directory)),
+          projects.map(p => hasPendingCommits(p.name, getProjectPaths(p))),
         )
         candidates = projects.filter((_, i) => changes[i])
       }
@@ -94,8 +94,16 @@ async function runRelease(projectName: string | undefined, options: any) {
 
     const lastTag = await getLastTag(project.name)
     const range = lastTag ? `${lastTag}..HEAD` : 'HEAD'
-    const rawCommits = await getCommits(range, project.directory)
+    const rawCommits = await getCommits(range, getProjectPaths(project))
     const commits = parseCommits(rawCommits)
+
+    let commitsSummary = `${commits.length}`
+    if (project.workspaceDeps.length > 0 && commits.length > 0) {
+      const ownCommits = await getCommits(range, [project.directory])
+      const depCommits = commits.length - ownCommits.length
+      if (depCommits > 0)
+        commitsSummary += ` (${depCommits} from workspace deps)`
+    }
 
     if (commits.length === 0 && !options.force) {
       p.note('No commits found since last release', color.blue('Info'))
@@ -179,7 +187,11 @@ async function runRelease(projectName: string | undefined, options: any) {
     p.note(
       `Project: ${project.name}\n`
       + `Version: ${project.version} -> ${color.green(nextVersion)}\n`
-      + `New Commits: ${commits.length}\n\n`
+      + `New Commits: ${commitsSummary}\n${
+        project.workspaceDeps.length > 0
+          ? `Workspace Deps: ${project.workspaceDeps.map(d => d.name).join(', ')}\n`
+          : ''
+      }\n`
       + `${gitActions}`,
       options.dryRun
         ? color.yellow('Release (Dry Run)')
@@ -372,7 +384,7 @@ program
       const statusData = await Promise.all(
         projects.map(async (p) => {
           const lastTag = await getLastTag(p.name)
-          const pending = await hasPendingCommits(p.name, p.directory)
+          const pending = await hasPendingCommits(p.name, getProjectPaths(p))
           return {
             'Project': p.name,
             'Version': p.version,
