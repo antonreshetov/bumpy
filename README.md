@@ -8,6 +8,7 @@ Zero-config, Git-powered versioning for monorepos.
 
 - **Zero Config:** Automatically detects projects using `package.json` workspaces, `pnpm-workspace.yaml`, or standard `apps/*` and `packages/*` structures.
 - **Granular Changelogs:** Generates `CHANGELOG.md` for each project based on its own Git history.
+- **Internal Packages Awareness:** Changes in unreleased workspace packages count as changes of the projects that depend on them.
 - **Conventional Intelligence:** Recommends the next version based on Conventional Commits.
 - **Tag-based Boundaries:** Uses tags like `projectName@version` to determine the history range.
 - **Prerelease Support:** Built-in support for `prepatch`, `preminor`, and `premajor`.
@@ -69,6 +70,7 @@ If you need to customize this (e.g., explicitly define projects, ignore some, or
   "projects": ["apps/*", "packages/*"],
   "release": {
     "ignore": ["apps/internal-tool"],
+    "includeWorkspaceDeps": true,
     "changelog": {
       "projectChangelogs": true,
       "workspaceChangelog": false
@@ -82,6 +84,18 @@ If you need to customize this (e.g., explicitly define projects, ignore some, or
   }
 }
 ```
+
+### Internal Workspace Packages
+
+Workspace packages that are not released themselves (excluded via `release.ignore` or left out of `projects`) usually ship inside the apps that depend on them. With `includeWorkspaceDeps` enabled (default), Bumpy follows the `dependencies`, `devDependencies`, `peerDependencies` and `optionalDependencies` of each project, transitively, and treats commits in those internal packages as commits of the project:
+
+- they make the project show up as having pending changes;
+- they are included in the project's changelog;
+- they are taken into account when recommending the next version.
+
+For example, with `"ignore": ["packages/**"]` and `apps/site` depending on `@acme/pricing` (`"workspace:*"`), a commit that only touches `packages/pricing` is released as part of `apps/site`.
+
+Released packages are not followed: they have their own versions and changelogs. Set `includeWorkspaceDeps` to `false` to only consider commits inside the project's own directory.
 
 ### Commit Message Placeholders
 
@@ -130,5 +144,6 @@ bumpy release --dry-run
 - `--custom <version>`: Specify a custom version (used with `--type custom`).
 - `--yes`: Skip all confirmation prompts.
 - `--dry-run`: Show what would happen without making any changes.
+- `--force`: Allow release without pending commits.
 
 Copyright (c) 2026-present, [Anton Reshetov](https://github.com/antonreshetov).

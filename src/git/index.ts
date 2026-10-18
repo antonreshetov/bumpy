@@ -23,11 +23,11 @@ export async function getLastTag(projectName: string): Promise<string | null> {
 
 export async function getCommits(
   range: string,
-  projectDir: string,
+  paths: string[],
 ): Promise<string[]> {
   const args = ['log', '--format=%B%n-hash-%n%H%n-separator-', range]
-  if (projectDir) {
-    args.push('--', projectDir)
+  if (paths.length > 0) {
+    args.push('--', ...paths)
   }
 
   try {
@@ -44,11 +44,11 @@ export async function getCommits(
 
 export async function hasPendingCommits(
   projectName: string,
-  projectDir: string,
+  paths: string[],
 ): Promise<boolean> {
   const lastTag = await getLastTag(projectName)
   const range = lastTag ? `${lastTag}..HEAD` : 'HEAD'
-  const commits = await getCommits(range, projectDir)
+  const commits = await getCommits(range, paths)
   return commits.length > 0
 }
 
