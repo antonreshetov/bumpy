@@ -11,6 +11,7 @@ Zero-config, Git-powered versioning for monorepos.
 - **Internal Packages Awareness:** Changes in unreleased workspace packages count as changes of the projects that depend on them.
 - **Conventional Intelligence:** Recommends the next version based on Conventional Commits.
 - **Tag-based Boundaries:** Uses tags like `projectName@version` to determine the history range.
+- **Customizable Tags:** Override the tag template per repo (e.g. `v{version}` for single-package repos).
 - **Prerelease Support:** Built-in support for `prepatch`, `preminor`, and `premajor`.
 - **Workspace Changelog:** Optional unified changelog at the root of the monorepo.
 - **Dry Run:** Preview all changes before they are applied.
@@ -79,7 +80,8 @@ If you need to customize this (e.g., explicitly define projects, ignore some, or
       "commit": true,
       "tag": true,
       "push": true,
-      "commitMessage": "chore(release): {tag}"
+      "commitMessage": "chore(release): {tag}",
+      "tagFormat": "{name}@{version}"
     }
   }
 }
@@ -97,9 +99,45 @@ For example, with `"ignore": ["packages/**"]` and `apps/site` depending on `@acm
 
 Released packages are not followed: they have their own versions and changelogs. Set `includeWorkspaceDeps` to `false` to only consider commits inside the project's own directory.
 
+### Tag Format
+
+`tagFormat` controls the name of the created tag and the tag mask used to find the previous release. Placeholders:
+
+- `{name}`: The name of the project.
+- `{version}`: The new version being released (required).
+
+If `tagFormat` is omitted, it is detected from the repository:
+
+| Layout | Default | Example |
+| --- | --- | --- |
+| Monorepo (multiple packages, or a package outside the root) | `{name}@{version}` | `project-a@1.2.3` |
+| Single package in the repository root | `v{version}` | `v1.2.3` |
+| Single package that already has `{name}@{version}` tags | `{name}@{version}` | `my-lib@1.2.3` |
+
+Set it explicitly to keep any other convention:
+
+```json
+{
+  "release": {
+    "git": {
+      "tagFormat": "release/{version}"
+    }
+  }
+}
+```
+
+It can also be overridden per run with `--tag-format`:
+
+```bash
+bumpy release --tag-format "v{version}"
+```
+
+> **Note:** Changing the tag format changes which tags Bumpy looks for. Existing tags in the old format are no longer matched, so the next release will read the full commit history. To switch an existing repo to a new format, create a tag in the new format on the last release commit first (e.g. `git tag v1.2.3 my-lib@1.2.3`).
+
 ### Commit Message Placeholders
 
 When customizing `commitMessage`, you can use the following placeholders:
+
 - `{name}`: The name of the project.
 - `{version}`: The new version being released.
 - `{tag}`: The full tag name (e.g., `project-a@1.2.3`).
@@ -142,6 +180,9 @@ bumpy release --dry-run
 
 - `--type <type>`: Bump type (`patch`, `minor`, `major`, `conventional`, `prepatch`, `preminor`, `premajor`, `as-is`, `custom`).
 - `--custom <version>`: Specify a custom version (used with `--type custom`).
+- `--tag-format <format>`: Tag name template, e.g. `v{version}` or `{name}@{version}`.
+- `--commit-message <message>`: Commit message template.
+- `--force`: Allow a release even when there are no pending commits.
 - `--yes`: Skip all confirmation prompts.
 - `--dry-run`: Show what would happen without making any changes.
 - `--force`: Allow release without pending commits.

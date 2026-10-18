@@ -5,19 +5,30 @@ export async function isWorkingTreeClean(): Promise<boolean> {
   return stdout.trim() === ''
 }
 
-export async function getLastTag(projectName: string): Promise<string | null> {
+/** `tagPattern` is a `git describe --match` glob, see `tagMatchPattern`. */
+export async function getLastTag(tagPattern: string): Promise<string | null> {
   try {
     const { stdout } = await execa('git', [
       'describe',
       '--tags',
       '--abbrev=0',
       '--match',
-      `${projectName}@*`,
+      tagPattern,
     ])
     return stdout.trim()
   }
   catch {
     return null
+  }
+}
+
+export async function listTags(tagPattern: string): Promise<string[]> {
+  try {
+    const { stdout } = await execa('git', ['tag', '--list', tagPattern])
+    return stdout.split('\n').filter(Boolean)
+  }
+  catch {
+    return []
   }
 }
 
@@ -43,10 +54,10 @@ export async function getCommits(
 }
 
 export async function hasPendingCommits(
-  projectName: string,
+  tagPattern: string,
   paths: string[],
 ): Promise<boolean> {
-  const lastTag = await getLastTag(projectName)
+  const lastTag = await getLastTag(tagPattern)
   const range = lastTag ? `${lastTag}..HEAD` : 'HEAD'
   const commits = await getCommits(range, paths)
   return commits.length > 0

@@ -22,6 +22,12 @@ export const BumpyConfigSchema = z
             tag: z.boolean().default(true),
             push: z.boolean().default(true),
             commitMessage: z.string().optional(),
+            tagFormat: z
+              .string()
+              .refine(v => v.includes('{version}'), {
+                message: 'tagFormat must include the {version} placeholder',
+              })
+              .optional(),
           })
           .default({
             commit: true,
