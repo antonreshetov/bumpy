@@ -48,14 +48,10 @@ export function recommendBump(commits: ParsedCommit[]): ReleaseType | null {
     if (isBreaking)
       return 'major'
 
-    if (commit.type === 'feat') {
-      if (!bump)
-        bump = 'minor'
-    }
-    else if (commit.type === 'fix') {
-      if (!bump)
-        bump = 'patch'
-    }
+    if (commit.type === 'feat')
+      bump = 'minor'
+    else if (commit.type === 'fix' && !bump)
+      bump = 'patch'
   }
 
   return bump
