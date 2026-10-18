@@ -4,6 +4,7 @@ import fs from 'node:fs/promises'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { getCommits, hasPendingCommits } from '@/git'
 import { getProjectPaths, resolveProjects } from '@/projects'
+import { MONOREPO_TAG_FORMAT, tagMatchPattern } from '@/tags'
 import { parseCommits } from '@/utils/commits'
 import { recommendBump } from '@/versioning'
 import { makeConfig, workspaceFiles } from './fixtures'
@@ -29,7 +30,10 @@ describe('pending commits with workspace deps', () => {
 
   async function pending(name: string, config?: BumpyConfig): Promise<boolean> {
     const project = await getProject(name, config)
-    return hasPendingCommits(project.name, getProjectPaths(project))
+    return hasPendingCommits(
+      tagMatchPattern(MONOREPO_TAG_FORMAT, project.name),
+      getProjectPaths(project),
+    )
   }
 
   async function commitsSinceTag(name: string) {

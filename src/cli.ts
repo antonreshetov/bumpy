@@ -19,6 +19,7 @@ import {
   push,
 } from '@/git'
 import { getProjectPaths, resolveProjects } from '@/projects'
+import { formatTag, resolveTagFormat, tagMatchPattern } from '@/tags'
 import { parseCommits } from '@/utils/commits'
 import { computeNextVersion, recommendBump } from '@/versioning'
 
@@ -37,6 +38,19 @@ async function runRelease(projectName: string | undefined, options: any) {
   try {
     const config = await loadConfig()
     const projects = await resolveProjects(config)
+    const tagFormat = await resolveTagFormat(
+      config,
+      projects,
+      options.tagFormat,
+    )
+
+    if (projects.length > 1 && !tagFormat.includes('{name}')) {
+      p.log.warn(
+        color.yellow(
+          `Tag format "${tagFormat}" has no {name} placeholder, so all projects will share the same tags.`,
+        ),
+      )
+    }
 
     if (options.force) {
       p.note('Commit check skipped', color.yellow('Force mode'))
@@ -59,7 +73,12 @@ async function runRelease(projectName: string | undefined, options: any) {
       }
       else {
         const changes = await Promise.all(
-          projects.map(p => hasPendingCommits(p.name, getProjectPaths(p))),
+          projects.map(p =>
+            hasPendingCommits(
+              tagMatchPattern(tagFormat, p.name),
+              getProjectPaths(p),
+            ),
+          ),
         )
         candidates = projects.filter((_, i) => changes[i])
       }
@@ -92,7 +111,7 @@ async function runRelease(projectName: string | undefined, options: any) {
       }
     }
 
-    const lastTag = await getLastTag(project.name)
+    const lastTag = await getLastTag(tagMatchPattern(tagFormat, project.name))
     const range = lastTag ? `${lastTag}..HEAD` : 'HEAD'
     const rawCommits = await getCommits(range, getProjectPaths(project))
     const commits = parseCommits(rawCommits)
@@ -178,6 +197,8 @@ async function runRelease(projectName: string | undefined, options: any) {
       customVersion,
     )
 
+    const tagName = formatTag(tagFormat, project.name, nextVersion)
+
     const gitActions = [
       `Commit: ${config.release.git.commit ? color.green('Yes') : color.red('No')}`,
       `Tag: ${config.release.git.tag ? color.green('Yes') : color.red('No')}`,
@@ -187,6 +208,7 @@ async function runRelease(projectName: string | undefined, options: any) {
     p.note(
       `Project: ${project.name}\n`
       + `Version: ${project.version} -> ${color.green(nextVersion)}\n`
+      + `Tag: ${color.green(tagName)}\n`
       + `New Commits: ${commitsSummary}\n${
         project.workspaceDeps.length > 0
           ? `Workspace Deps: ${project.workspaceDeps.map(d => d.name).join(', ')}\n`
@@ -300,7 +322,6 @@ async function runRelease(projectName: string | undefined, options: any) {
 
     // 4. Git operations
     const uniqueFiles = Array.from(new Set(changedFiles))
-    const tagName = `${project.name}@${nextVersion}`
     let commitMsg = `chore(release): ${tagName}`
 
     const rawCommitMsg
@@ -380,11 +401,16 @@ program
     try {
       const config = await loadConfig()
       const projects = await resolveProjects(config)
+      const tagFormat = await resolveTagFormat(config, projects)
 
       const statusData = await Promise.all(
         projects.map(async (p) => {
-          const lastTag = await getLastTag(p.name)
-          const pending = await hasPendingCommits(p.name, getProjectPaths(p))
+          const tagPattern = tagMatchPattern(tagFormat, p.name)
+          const lastTag = await getLastTag(tagPattern)
+          const pending = await hasPendingCommits(
+            tagPattern,
+            getProjectPaths(p),
+          )
           return {
             'Project': p.name,
             'Version': p.version,
@@ -413,6 +439,10 @@ program
   )
   .option('--custom <version>', 'Custom version if type is custom')
   .option('--commit-message <message>', 'Commit message template')
+  .option(
+    '--tag-format <format>',
+    'Tag name template, e.g. "v{version}" or "{name}@{version}"',
+  )
   .option('--dry-run', 'Don\'t perform any changes', false)
   .option('--yes', 'Skip confirmation prompts', false)
   .option('--force', 'Allow release without pending commits', false)
