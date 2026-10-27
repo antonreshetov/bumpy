@@ -104,4 +104,30 @@ describe('pending commits with workspace deps', () => {
     ])
     expect(recommendBump(client)).toBe('minor')
   })
+
+  it('counts commits in included paths as project commits', async () => {
+    const config = makeConfig(
+      {},
+      { projects: [{ path: 'apps/site', include: ['engine', 'Dockerfile'] }] },
+    )
+    await writeFiles(dir, { 'engine/main.go': 'package main' })
+    await commitAll(dir, 'feat(engine): faster peers')
+    await writeFiles(dir, { Dockerfile: 'FROM scratch' })
+    await commitAll(dir, 'fix(docker): base image')
+    await writeFiles(dir, { 'docs/readme.md': '# docs' })
+    await commitAll(dir, 'docs: readme')
+
+    expect(await pending('site')).toBe(false)
+    expect(await pending('site', config)).toBe(true)
+
+    const site = await getProject('site', config)
+    const commits = parseCommits(
+      await getCommits('site@1.0.0..HEAD', getProjectPaths(site)),
+    )
+    expect(commits.map(c => c.header)).toEqual([
+      'fix(docker): base image',
+      'feat(engine): faster peers',
+    ])
+    expect(recommendBump(commits)).toBe('minor')
+  })
 })
