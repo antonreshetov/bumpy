@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.0 (2026-10-27)
+
+### Features
+
+- **projects:** count commits in included paths as project commits (#3) ([9e5aa30](https://github.com/antonreshetov/bumpy/commit/9e5aa30dc23fc94933cbc75ae25326fe0087b394))
+
 ## 0.5.0 (2026-10-18)
 
 ### Features
