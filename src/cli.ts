@@ -117,11 +117,26 @@ async function runRelease(projectName: string | undefined, options: any) {
     const commits = parseCommits(rawCommits)
 
     let commitsSummary = `${commits.length}`
-    if (project.workspaceDeps.length > 0 && commits.length > 0) {
+    if (getProjectPaths(project).length > 1 && commits.length > 0) {
       const ownCommits = await getCommits(range, [project.directory])
-      const depCommits = commits.length - ownCommits.length
-      if (depCommits > 0)
-        commitsSummary += ` (${depCommits} from workspace deps)`
+      const withDeps
+        = project.include.length > 0
+          ? await getCommits(
+              range,
+              getProjectPaths({ ...project, include: [] }),
+            )
+          : commits
+      // A commit touching both a dependency and an included path counts once,
+      // as a dependency commit
+      const sources = [
+        [withDeps.length - ownCommits.length, 'from workspace deps'],
+        [commits.length - withDeps.length, 'from included paths'],
+      ] as const
+      const details = sources
+        .filter(([count]) => count > 0)
+        .map(([count, label]) => `${count} ${label}`)
+      if (details.length > 0)
+        commitsSummary += ` (${details.join(', ')})`
     }
 
     if (commits.length === 0 && !options.force) {
@@ -212,6 +227,10 @@ async function runRelease(projectName: string | undefined, options: any) {
       + `New Commits: ${commitsSummary}\n${
         project.workspaceDeps.length > 0
           ? `Workspace Deps: ${project.workspaceDeps.map(d => d.name).join(', ')}\n`
+          : ''
+      }${
+        project.include.length > 0
+          ? `Included Paths: ${project.include.join(', ')}\n`
           : ''
       }\n`
       + `${gitActions}`,

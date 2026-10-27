@@ -1,5 +1,5 @@
 /* eslint-disable node/prefer-global/process */
-import type { BumpyConfig } from '@/config/schema'
+import type { BumpyConfig, ProjectEntry } from '@/config/schema'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import fg from 'fast-glob'
@@ -19,6 +19,8 @@ export interface Project {
   repoUrl?: string
   /** Internal (not released) workspace packages this project depends on, transitively. */
   workspaceDeps: WorkspacePackage[]
+  /** Extra paths from `projects[].include` whose commits belong to this project. */
+  include: string[]
 }
 
 const DEPENDENCY_FIELDS = [
@@ -225,17 +227,47 @@ function collectWorkspaceDeps(
   return result
 }
 
+/**
+ * Maps manifest paths to the `include` paths of the project entries that
+ * matched them. An entry may be a pattern, so it is resolved on its own.
+ */
+async function resolveIncludes(
+  cwd: string,
+  entries: ProjectEntry[],
+  ignore: string[],
+): Promise<Map<string, string[]>> {
+  const includes = new Map<string, string[]>()
+
+  for (const entry of entries) {
+    if (typeof entry === 'string' || entry.include.length === 0)
+      continue
+
+    for (const manifest of await findManifests(cwd, [entry.path], ignore)) {
+      const current = includes.get(manifest) ?? []
+      includes.set(manifest, [...new Set([...current, ...entry.include])])
+    }
+  }
+
+  return includes
+}
+
 export async function resolveProjects(
   config: BumpyConfig,
   cwd: string = process.cwd(),
 ): Promise<Project[]> {
   const packageManagerPatterns = await getPackageManagerPatterns(cwd)
+  const projectEntries = config.projects ?? []
   const patterns
-    = config.projects && config.projects.length > 0
-      ? config.projects
+    = projectEntries.length > 0
+      ? projectEntries.map(e => (typeof e === 'string' ? e : e.path))
       : packageManagerPatterns
 
   const entries = await findManifests(cwd, patterns, config.release.ignore)
+  const includes = await resolveIncludes(
+    cwd,
+    projectEntries,
+    config.release.ignore,
+  )
 
   // Try to find root package.json for fallback repository
   let rootRepoUrl: string | undefined
@@ -257,12 +289,12 @@ export async function resolveProjects(
     }
   }
 
-  const manifests: Array<{ pkgPath: string, pkg: any }> = []
+  const manifests: Array<{ pkgPath: string, pkg: any, include: string[] }> = []
   for (const entry of entries) {
     const pkgPath = path.join(cwd, entry)
     const pkg = await readManifest(pkgPath)
     if (pkg?.name)
-      manifests.push({ pkgPath, pkg })
+      manifests.push({ pkgPath, pkg, include: includes.get(entry) ?? [] })
   }
 
   const internal = config.release.includeWorkspaceDeps
@@ -273,16 +305,21 @@ export async function resolveProjects(
       )
     : new Map<string, ManifestInfo>()
 
-  return manifests.map(({ pkgPath, pkg }) => ({
+  return manifests.map(({ pkgPath, pkg, include }) => ({
     name: pkg.name,
     directory: path.relative(cwd, path.dirname(pkgPath)) || '.',
     version: pkg.version || '0.0.0',
     packageJsonPath: pkgPath,
     repoUrl: getRepoUrl(pkg) || rootRepoUrl,
     workspaceDeps: collectWorkspaceDeps(pkg, internal),
+    include,
   }))
 }
 
 export function getProjectPaths(project: Project): string[] {
-  return [project.directory, ...project.workspaceDeps.map(d => d.directory)]
+  return [
+    project.directory,
+    ...project.workspaceDeps.map(d => d.directory),
+    ...project.include,
+  ]
 }

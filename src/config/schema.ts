@@ -1,8 +1,18 @@
 import { z } from 'zod'
 
+const ProjectEntrySchema = z.union([
+  z.string(),
+  z
+    .object({
+      path: z.string(),
+      include: z.array(z.string()).default([]),
+    })
+    .strict(),
+])
+
 export const BumpyConfigSchema = z
   .object({
-    projects: z.array(z.string()).optional(),
+    projects: z.array(ProjectEntrySchema).optional(),
     release: z
       .object({
         ignore: z.array(z.string()).default([]),
@@ -52,3 +62,4 @@ export const BumpyConfigSchema = z
   .strict()
 
 export type BumpyConfig = z.infer<typeof BumpyConfigSchema>
+export type ProjectEntry = z.infer<typeof ProjectEntrySchema>

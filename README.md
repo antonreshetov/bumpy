@@ -99,6 +99,23 @@ For example, with `"ignore": ["packages/**"]` and `apps/site` depending on `@acm
 
 Released packages are not followed: they have their own versions and changelogs. Set `includeWorkspaceDeps` to `false` to only consider commits inside the project's own directory.
 
+### Included Paths
+
+Some code ships with a project without being a workspace dependency of it: a service in another language, a Dockerfile, a client app the project bundles. List such paths in `include` by writing the project entry as an object:
+
+```json
+{
+  "projects": [
+    {
+      "path": "apps/server",
+      "include": ["engine", "Dockerfile", "docker", "apps/mobile"]
+    }
+  ]
+}
+```
+
+Commits that touch these paths count as commits of the project, the same way as commits in internal workspace packages: pending changes, changelog and the recommended version. Paths are relative to the repository root and use git pathspec syntax, so a directory, a file or a glob like `scripts/*.sh` all work. `path` is matched the same way as a string entry, and `include` applies to every project it matches. String and object entries can be mixed.
+
 ### Tag Format
 
 `tagFormat` controls the name of the created tag and the tag mask used to find the previous release. Placeholders:

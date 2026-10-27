@@ -92,3 +92,80 @@ describe('resolveProjects: workspace deps', () => {
     expect(makeConfig().release.includeWorkspaceDeps).toBe(true)
   })
 })
+
+describe('resolveProjects: included paths', () => {
+  let dir: string
+  const originalCwd = process.cwd()
+
+  beforeEach(async () => {
+    dir = await createWorkspace(workspaceFiles)
+    process.chdir(dir)
+  })
+
+  afterEach(async () => {
+    process.chdir(originalCwd)
+    await fs.rm(dir, { recursive: true, force: true })
+  })
+
+  it('adds included paths after the project and its deps', async () => {
+    const projects = await resolveProjects(
+      makeConfig(
+        {},
+        {
+          projects: [
+            { path: 'apps/site', include: ['engine', 'Dockerfile'] },
+            'apps/admin',
+          ],
+        },
+      ),
+      dir,
+    )
+    expect(projects.map(p => p.name).sort()).toEqual(['admin', 'site'])
+    const site = projects.find(p => p.name === 'site')!
+    expect(getProjectPaths(site)).toEqual([
+      'apps/site',
+      'packages/pricing',
+      'packages/core',
+      'engine',
+      'Dockerfile',
+    ])
+    expect(projects.find(p => p.name === 'admin')!.include).toEqual([])
+  })
+
+  it('applies include to every project matched by a pattern', async () => {
+    const projects = await resolveProjects(
+      makeConfig({}, { projects: [{ path: 'apps/*', include: ['shared'] }] }),
+      dir,
+    )
+    expect(projects.map(p => p.include)).toEqual([
+      ['shared'],
+      ['shared'],
+      ['shared'],
+    ])
+  })
+
+  it('merges include of entries matching the same project', async () => {
+    const projects = await resolveProjects(
+      makeConfig(
+        {},
+        {
+          projects: [
+            { path: 'apps/*', include: ['shared'] },
+            { path: 'apps/site', include: ['engine', 'shared'] },
+          ],
+        },
+      ),
+      dir,
+    )
+    expect(projects.find(p => p.name === 'site')!.include).toEqual([
+      'shared',
+      'engine',
+    ])
+  })
+
+  it('rejects unknown keys in a project entry', () => {
+    expect(() =>
+      makeConfig({}, { projects: [{ path: 'apps/site', includes: [] }] }),
+    ).toThrow()
+  })
+})
